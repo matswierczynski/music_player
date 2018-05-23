@@ -53,18 +53,15 @@ public final class MediaPlayerHolder implements PlayerAdapter {
     private void initializeMediaPlayer() {
         if (mMediaPlayer == null) {
             mMediaPlayer = new MediaPlayer();
-            mMediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-                @Override
-                public void onCompletion(MediaPlayer mediaPlayer) {
+            mMediaPlayer.setOnCompletionListener(
+                    mediaPlayer ->{
                     stopUpdatingCallbackWithPosition(true);
                     logToUI("MediaPlayer playback completed");
                     if (mPlaybackInfoListener != null) {
                         mPlaybackInfoListener.onStateChanged(PlaybackInfoListener.State.COMPLETED);
                         mPlaybackInfoListener.onPlaybackCompleted();
                     }
-                }
-            });
-            logToUI("mMediaPlayer = new MediaPlayer()");
+                });
         }
     }
 
@@ -82,27 +79,20 @@ public final class MediaPlayerHolder implements PlayerAdapter {
         AssetFileDescriptor assetFileDescriptor =
                 mContext.getResources().openRawResourceFd(mResourceId);
         try {
-            logToUI("load() {1. setDataSource}");
             mMediaPlayer.setDataSource(assetFileDescriptor);
-        } catch (Exception e) {
-            logToUI(e.toString());
-        }
+        } catch (Exception e) {}
 
         try {
-            logToUI("load() {2. prepare}");
             mMediaPlayer.prepare();
-        } catch (Exception e) {
-            logToUI(e.toString());
-        }
+        } catch (Exception e) {}
 
         initializeProgressCallback();
-        logToUI("initializeProgressCallback()");
+
     }
 
     @Override
     public void release() {
         if (mMediaPlayer != null) {
-            logToUI("release() and mMediaPlayer = null");
             mMediaPlayer.release();
             mMediaPlayer = null;
         }
@@ -119,8 +109,7 @@ public final class MediaPlayerHolder implements PlayerAdapter {
     @Override
     public void play() {
         if (mMediaPlayer != null && !mMediaPlayer.isPlaying()) {
-            logToUI(String.format("playbackStart() %s",
-                                  mContext.getResources().getResourceEntryName(mResourceId)));
+
             mMediaPlayer.start();
             if (mPlaybackInfoListener != null) {
                 mPlaybackInfoListener.onStateChanged(PlaybackInfoListener.State.PLAYING);
@@ -132,7 +121,6 @@ public final class MediaPlayerHolder implements PlayerAdapter {
     @Override
     public void reset() {
         if (mMediaPlayer != null) {
-            logToUI("playbackReset()");
             mMediaPlayer.reset();
             loadMedia(mResourceId);
             if (mPlaybackInfoListener != null) {
@@ -149,7 +137,6 @@ public final class MediaPlayerHolder implements PlayerAdapter {
             if (mPlaybackInfoListener != null) {
                 mPlaybackInfoListener.onStateChanged(PlaybackInfoListener.State.PAUSED);
             }
-            logToUI("playbackPause()");
         }
     }
 

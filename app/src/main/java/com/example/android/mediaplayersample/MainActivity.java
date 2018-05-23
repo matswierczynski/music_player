@@ -16,7 +16,11 @@
 
 package com.example.android.mediaplayersample;
 
+import android.content.Context;
+import android.content.Intent;
+import android.content.res.Configuration;
 import android.media.MediaMetadataRetriever;
+import android.media.audiofx.AudioEffect;
 import android.net.Uri;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
@@ -29,6 +33,7 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 
 import java.lang.reflect.Field;
+import java.util.Random;
 
 /**
  * Allows playback of a single MP3 file via the UI. It contains a {@link MediaPlayerHolder}
@@ -39,9 +44,13 @@ public final class MainActivity extends AppCompatActivity
                                 implements OnPlay{
 
     public static final String TAG = "MainActivity";
+    private Field[] fields;
     private static final int ONE_SECOND = 1000; //milliseconds
     private static final int ONE_MINUTE = 60000;//milliseconds
-    public static final int MEDIA_RES_ID = R.raw.jazz_in_paris;
+    private static final int SECONDS_TO_SCROLL = 10; //no of seconds to forward / rewind song
+    private final static float BUTTON_SIZE_LANDSCAPE = 30.0f; //dp
+    private final static float BUTTON_SIZE_PORTRAIT = 48.0f; //dp
+    private int currentSongSelected;
     private String [] songTitles;
     private String [] songAuthors;
     private String [] songDurations;
@@ -51,10 +60,21 @@ public final class MainActivity extends AppCompatActivity
     private RecyclerView.LayoutManager mLayoutManager;
 
 
-    private SeekBar mSeekbarAudio;
-    private PlayerAdapter mPlayerAdapter;
-    private boolean mUserIsSeeking = false;
-    MediaMetadataRetriever mmr;
+    private static SeekBar mSeekbarAudio;
+    private static PlayerAdapter mPlayerAdapter;
+    private static boolean mUserIsSeeking = false;
+    private static MediaMetadataRetriever mmr;
+
+    public static void startEqualizer(Context context) {
+        Intent starter = new Intent(AudioEffect
+                .ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL);
+
+        if ((starter.resolveActivity(context.getPackageManager()) != null)) {
+            context.startActivity(starter);
+        } else {
+            // No equalizer found :(
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -70,8 +90,6 @@ public final class MainActivity extends AppCompatActivity
     @Override
     protected void onStart() {
         super.onStart();
-        mPlayerAdapter.loadMedia(MEDIA_RES_ID);
-        Log.d(TAG, "onStart: create MediaPlayer");
     }
 
     @Override
@@ -85,41 +103,52 @@ public final class MainActivity extends AppCompatActivity
         }
     }
 
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        ImageButton playSong = findViewById(R.id.playSong);
+        ImageButton fastRewind = findViewById(R.id.fast_rewind);
+        ImageButton fastForward = findViewById(R.id.fast_forward);
+
+        final float scale = getResources().getDisplayMetrics().density;
+        float dps;
+        if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE)
+            dps = BUTTON_SIZE_LANDSCAPE;
+        else
+            dps = BUTTON_SIZE_PORTRAIT;
+        int pixels = (int) (dps * scale + 0.5f);
+        fastForward.getLayoutParams().height = pixels;
+        fastForward.getLayoutParams().width = pixels;
+        playSong.getLayoutParams().height = pixels;
+        playSong.getLayoutParams().width = pixels;
+        fastRewind.getLayoutParams().height = pixels;
+        fastRewind.getLayoutParams().width = pixels;
+
+    }
+
+
+
     private void initializeUI() {
         ImageButton mPlayButton = (ImageButton) findViewById(R.id.playSong);
-      //  Button mPauseButton = (Button) findViewById(R.id.button_pause);
-      //  Button mResetButton = (Button) findViewById(R.id.button_reset);
+        ImageButton mRewindButton = (ImageButton) findViewById(R.id.fast_rewind);
+        ImageButton mForwardButton = (ImageButton) findViewById(R.id.fast_forward);
         mSeekbarAudio = (SeekBar) findViewById(R.id.seekbar_audio);
 
-       /* mPauseButton.setOnClickListener(
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View view) {
-                        mPlayerAdapter.pause();
-                    }
-                });*/
         mPlayButton.setOnClickListener(
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View view) {
-                        mPlayerAdapter.play();
-                    }
-                });
-        /*mResetButton.setOnClickListener(
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View view) {
-                        mPlayerAdapter.reset();
-                    }
-                });*/
+                v -> handleMusicPlaying()
+        );
+        mRewindButton.setOnClickListener(
+                v -> rewind()
+        );
+        mForwardButton.setOnClickListener(
+                v -> forward()
+        );
     }
 
     private void initializePlaybackController() {
         MediaPlayerHolder mMediaPlayerHolder = new MediaPlayerHolder(this);
-        Log.d(TAG, "initializePlaybackController: created MediaPlayerHolder");
         mMediaPlayerHolder.setPlaybackInfoListener(new PlaybackListener());
         mPlayerAdapter = mMediaPlayerHolder;
-        Log.d(TAG, "initializePlaybackController: MediaPlayerHolder progress callback set");
     }
 
     private void initializeSeekbar() {
@@ -134,9 +163,7 @@ public final class MainActivity extends AppCompatActivity
 
                     @Override
                     public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                        if (fromUser) {
                             userSelectedPosition = progress;
-                        }
                     }
 
                     @Override
@@ -148,7 +175,7 @@ public final class MainActivity extends AppCompatActivity
     }
 
     private void getSongsData(){
-        Field[] fields=R.raw.class.getFields();
+        fields=R.raw.class.getFields();
         songTitles = new String[fields.length];
         songAuthors = new String[fields.length];
         songDurations = new String[fields.length];
@@ -202,33 +229,105 @@ public final class MainActivity extends AppCompatActivity
         }
     }
 
-    @Override
-    public void onClick(int position) {
-        ((TextView)findViewById(R.id.currentTitle)).setText(songTitles[position]);
-        findViewById(R.id.currentTitle).setVisibility(View.VISIBLE);
-        findViewById(R.id.seekbar_audio).setVisibility(View.VISIBLE);
+    private void handleMusicPlaying(){
+        if (mPlayerAdapter.isPlaying()) {
+            mPlayerAdapter.pause();
+            ((ImageButton)findViewById(R.id.playSong)).
+                    setImageResource(
+                            R.drawable.ic_play_circle_outline_black_24dp);
+            ((TextView)findViewById(R.id.currentTitle)).setVisibility(View.GONE);
+            mSeekbarAudio.setVisibility(View.GONE);
+
+        }
+        else {
+            mPlayerAdapter.play();
+            ((ImageButton)findViewById(R.id.playSong)).
+                    setImageResource(
+                            R.drawable.ic_pause_circle_outline_black_24dp);
+            ((TextView)findViewById(R.id.currentTitle)).setVisibility(View.VISIBLE);
+            mSeekbarAudio.setVisibility(View.VISIBLE);
+        }
+
     }
 
-    public class PlaybackListener extends PlaybackInfoListener {
+    @Override
+    public void onClick(int position) {
+        currentSongSelected = position;
+        ((TextView)findViewById(R.id.currentTitle)).setText(songTitles[position]);
+        ((ImageButton)findViewById(R.id.fast_rewind)).setVisibility(View.VISIBLE);
+        ((ImageButton)findViewById(R.id.playSong)).setVisibility(View.VISIBLE);
+        ((ImageButton)findViewById(R.id.fast_forward)).setVisibility(View.VISIBLE);
+
+        String filename = fields[position].getName();
+        int id = getResources().getIdentifier(filename, "raw", getPackageName());
+        mPlayerAdapter.reset();
+        mPlayerAdapter.release();
+        mPlayerAdapter.loadMedia(id);
+        handleMusicPlaying();
+    }
+
+    private void shufflePlay(){
+        Random random = new Random();
+        int songNumber = random.nextInt(songTitles.length);
+        while(currentSongSelected == songNumber )
+            songNumber = random.nextInt(songTitles.length);
+        onClick(songNumber);
+    }
+
+    private void standardPlay(){
+        currentSongSelected++;
+        currentSongSelected%=songTitles.length; //if next song number exceeds songs amount,
+                                                //take first song
+        onClick(currentSongSelected);
+    }
+
+    private void playNextSong(){
+
+    }
+
+    private void playPreviousSong(){
+
+    }
+
+    private void forward(){
+        int currentSeekBarPos = mSeekbarAudio.getProgress();
+        int seekPosition = currentSeekBarPos+SECONDS_TO_SCROLL*ONE_SECOND;
+        if (seekPosition >= mSeekbarAudio.getMax())
+            playNextSong();
+        else {
+            mSeekbarAudio.setProgress(seekPosition);
+            mPlayerAdapter.seekTo(seekPosition);
+        }
+    }
+
+    private void rewind(){
+        int currentSeekBarPos = mSeekbarAudio.getProgress();
+        int seekPosition = currentSeekBarPos-SECONDS_TO_SCROLL*ONE_SECOND;
+        if (seekPosition <= 0)
+            playPreviousSong();
+        else {
+            mSeekbarAudio.setProgress(seekPosition);
+            mPlayerAdapter.seekTo(seekPosition);
+        }
+    }
+
+    public static class PlaybackListener extends PlaybackInfoListener {
 
         @Override
         public void onDurationChanged(int duration) {
             mSeekbarAudio.setMax(duration);
-            Log.d(TAG, String.format("setPlaybackDuration: setMax(%d)", duration));
         }
 
         @Override
         public void onPositionChanged(int position) {
             if (!mUserIsSeeking) {
                 mSeekbarAudio.setProgress(position, true);
-                Log.d(TAG, String.format("setPlaybackPosition: setProgress(%d)", position));
             }
         }
 
         @Override
         public void onStateChanged(@State int state) {
             String stateToString = PlaybackInfoListener.convertStateToString(state);
-            onLogUpdated(String.format("onStateChanged(%s)", stateToString));
         }
 
         @Override

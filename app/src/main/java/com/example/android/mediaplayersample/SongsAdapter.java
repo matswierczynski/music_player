@@ -62,7 +62,7 @@ class SongsAdapter extends RecyclerView.Adapter <SongsAdapter.SongViewHolder>{
             songTitle    = itemView.findViewById(R.id.songTitle);
             songAuthor   = itemView.findViewById(R.id.songAuthor);
             songDuration = itemView.findViewById(R.id.songDuration);
-            playSong     = itemView.findViewById(R.id.playSong2);
+            playSong     = itemView.findViewById(R.id.play_selected);
         }
     }
 }
